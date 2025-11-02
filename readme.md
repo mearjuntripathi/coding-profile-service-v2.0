@@ -37,7 +37,7 @@ The service uses **HTML scraping** and APIs where available to fetch public stat
 
 ## Project Structure
 
-```
+```bash
 coding-profile-service/
 ├── cmd/
 │   └── server/
@@ -59,7 +59,10 @@ coding-profile-service/
 │       └── stats_response.go # Data model for profiles
 ├── go.mod
 ├── go.sum
+├── dockerfile                # Dockerfile for containerizing the app
+├── .dockerignore             # Excludes unnecessary files from Docker image
 └── README.md
+
 ```
 
 ---
@@ -253,6 +256,87 @@ type GFGProfile {
 #   }
 # }
 ```
+
+
+### 🔹 **API Endpoint**
+
+```
+GET https://coding-profile-service.onrender.com/stats
+```
+
+| Query Parameter | Description            | Example           |
+| --------------- | ---------------------- | ----------------- |
+| `leetcode`      | LeetCode username      | `mearjuntripathi` |
+| `codechef`      | CodeChef username      | `isthisarjun`     |
+| `gfg`           | GeeksforGeeks username | `mearjuntripathi` |
+| `hackerrank`    | HackerRank username    | `mearjuntripathi` |
+
+✅ **Example Request:**
+
+```
+https://coding-profile-service.onrender.com/stats?leetcode=mearjuntripathi&codechef=isthisarjun&gfg=mearjuntripathi&hackerrank=mearjuntripathi
+```
+
+✅ **Example Response:**
+
+```json
+{
+    "profiles": [
+        {
+            "platform": "leetcode",
+            "username": "mearjuntripathi",
+            "totalSolved": 710,
+            "easySolved": 253,
+            "mediumSolved": 427,
+            "hardSolved": 30
+        },
+        {
+            "platform": "gfg",
+            "username": "mearjuntripathi",
+            "totalSolved": 534,
+            "streak": 50,
+            "easySolved": 224,
+            "mediumSolved": 277,
+            "hardSolved": 33,
+            "maxRating": 1705
+        },
+        {
+            "platform": "codechef",
+            "username": "isthisarjun",
+            "totalSolved": 488,
+            "rating": 1593,
+            "contestsParticipated": 32,
+            "maxRating": 1624,
+            "globalRank": 18506,
+            "countryRank": 16669
+        },
+        {
+            "platform": "hackerrank",
+            "username": "mearjuntripathi",
+            "totalSolved": 756,
+            "badges": [
+                "Problem Solving",
+                "CPP",
+                "Java",
+                "Python",
+                "Days of Code",
+                "Sql",
+                "C language"
+            ],
+            "certifications": 4,
+            "certificationLinks": [
+                "https://www.hackerrank.com/certificates/dd88f94012d9",
+                "https://www.hackerrank.com/certificates/ad7f9b3ad2e1",
+                "https://www.hackerrank.com/certificates/b78dde45a6f8",
+                "https://www.hackerrank.com/certificates/7fdef080e935"
+            ]
+        }
+    ]
+}
+```
+
+---
+
 ### Notes:
 
 1. Each platform has its **own type** because fields differ slightly.
