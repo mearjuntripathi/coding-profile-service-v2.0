@@ -20,6 +20,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 		"gfg":        r.URL.Query().Get("gfg"),
 		"codechef":   r.URL.Query().Get("codechef"),
 		"hackerrank": r.URL.Query().Get("hackerrank"),
+		"codeforces": r.URL.Query().Get("codeforces"),
 	}
 
 	var results []model.StatsResponse
@@ -60,7 +61,9 @@ func fetchPlatformStats(platform, username string) (model.StatsResponse, error) 
 		return scraper.FetchCodeChef(username)
 	case "hackerrank":
 		return scraper.FetchHackerRank(username)
-	default:
+	case "codeforces":
+		return scraper.FetchCodeforces(username)
+default:
 		return model.StatsResponse{Platform: platform, Username: username, Error: "unsupported platform"}, nil
 	}
 }
