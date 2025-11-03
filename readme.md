@@ -283,14 +283,6 @@ https://coding-profile-service.onrender.com/stats?leetcode=mearjuntripathi&codec
 {
     "profiles": [
         {
-            "platform": "leetcode",
-            "username": "mearjuntripathi",
-            "totalSolved": 710,
-            "easySolved": 253,
-            "mediumSolved": 427,
-            "hardSolved": 30
-        },
-        {
             "platform": "gfg",
             "username": "mearjuntripathi",
             "totalSolved": 534,
@@ -330,6 +322,25 @@ https://coding-profile-service.onrender.com/stats?leetcode=mearjuntripathi&codec
                 "https://www.hackerrank.com/certificates/b78dde45a6f8",
                 "https://www.hackerrank.com/certificates/7fdef080e935"
             ]
+        },
+        {
+            "platform": "codeforces",
+            "username": "isthisarjun",
+            "totalSolved": 7,
+            "rating": 860,
+            "contestsParticipated": 3,
+            "maxRating": 860,
+            "questionsByType": {
+                "easy": 7
+            }
+        },
+        {
+            "platform": "leetcode",
+            "username": "mearjuntripathi",
+            "totalSolved": 710,
+            "easySolved": 253,
+            "mediumSolved": 427,
+            "hardSolved": 30
         }
     ]
 }
