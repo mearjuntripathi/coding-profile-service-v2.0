@@ -1,166 +1,157 @@
 package handler
 
 import (
-	"log"
 	"net/http"
-	"bytes"
-	"os"
-	"path/filepath"
-	"github.com/yuin/goldmark"
 )
 
-// findReadme walks upward from the current directory to find README.md
-func findReadme() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		path := filepath.Join(dir, "README.md")
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return "", os.ErrNotExist
-}
-
 func RequestHandler(w http.ResponseWriter, r *http.Request) {
-		readmePath, err := findReadme()
-		if err != nil {
-			http.Error(w, "README.md not found", http.StatusNotFound)
-			log.Printf("Error locating README: %v", err)
-			return
-		}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		data, err := os.ReadFile(readmePath)
-		if err != nil {
-			http.Error(w, "Failed to read README", http.StatusInternalServerError)
-			log.Printf("Error reading README: %v", err)
-			return
-		}
+	w.Write([]byte(`
+	<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>User Profile Stats Search</title>
 
-		var buf bytes.Buffer
-		if err := goldmark.Convert(data, &buf); err != nil {
-			http.Error(w, "Failed to render README", http.StatusInternalServerError)
-			log.Printf("Markdown conversion error: %v", err)
-			return
-		}
+		<style>
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+				max-width: 600px;
+				margin: 3rem auto;
+				padding: 2rem;
+				text-align: center;
+			}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(`
-		<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-			<title>Project Documentation</title>
-			<style>
-				:root {
-					color-scheme: light dark;
-				}
-				body {
-					max-width: 900px;
-					margin: 2rem auto;
-					padding: 2rem;
-					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-					line-height: 1.6;
-					background-color: var(--bg);
-					color: var(--text);
-					transition: background 0.3s, color 0.3s;
-				}
+			/* 🔵 Top GitHub banner */
+			.top-banner {
+				background: #f5f5f5;
+				padding: 12px 20px;
+				border-radius: 10px;
+				margin-bottom: 2rem;
+				font-size: 1rem;
+				font-weight: 600;
+			}
 
-				/* Light mode colors */
-				@media (prefers-color-scheme: light) {
-					:root {
-						--bg: #ffffff;
-						--text: #24292e;
-						--code-bg: #f6f8fa;
-						--link: #0969da;
-					}
-				}
+			.top-banner a {
+				color: #0366d6;
+				text-decoration: none;
+			}
 
-				/* Dark mode colors */
-				@media (prefers-color-scheme: dark) {
-					:root {
-						--bg: #0d1117;
-						--text: #c9d1d9;
-						--code-bg: #161b22;
-						--link: #58a6ff;
-					}
-				}
+			.top-banner a:hover {
+				text-decoration: underline;
+			}
 
-				h1, h2, h3, h4 {
-					border-bottom: 1px solid rgba(128,128,128,0.3);
-					padding-bottom: .3em;
-					margin-top: 1.4em;
-				}
+			h1 {
+				font-size: 2rem;
+				margin-bottom: 1rem;
+			}
 
-				a {
-					color: var(--link);
-					text-decoration: none;
-				}
-				a:hover {
-					text-decoration: underline;
-				}
+			.input-group {
+				margin-bottom: 1rem;
+				text-align: left;
+			}
 
-				code {
-					background: var(--code-bg);
-					padding: 2px 4px;
-					border-radius: 4px;
-					font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-					font-size: 0.9em;
-				}
+			label {
+				font-weight: 600;
+			}
 
-				pre {
-					background: var(--code-bg);
-					padding: 1em;
-					border-radius: 6px;
-					overflow-x: auto;
-					font-size: 0.9em;
-				}
+			input {
+				width: 100%;
+				padding: 10px;
+				margin-top: 4px;
+				font-size: 1rem;
+				border-radius: 8px;
+				border: 1px solid #999;
+			}
 
-				img {
-					max-width: 100%;
-					border-radius: 4px;
-				}
+			button {
+				width: 100%;
+				padding: 12px;
+				font-size: 1.1rem;
+				border: none;
+				border-radius: 8px;
+				background-color: #007bff;
+				color: white;
+				cursor: pointer;
+				margin-top: 1rem;
+			}
 
-				blockquote {
-					border-left: 4px solid var(--link);
-					padding-left: 1em;
-					color: #6a737d;
-					margin: 1em 0;
-				}
+			button:hover {
+				background-color: #005fcc;
+			}
 
-				table {
-					border-collapse: collapse;
-					margin: 1em 0;
-					width: 100%;
-				}
+			.note {
+				margin-top: 1rem;
+				opacity: .7;
+				font-size: .9rem;
+			}
+		</style>
 
-				th, td {
-					border: 1px solid rgba(128,128,128,0.3);
-					padding: 8px;
-				}
+		<script>
+			function searchStats() {
+				const leetcode = document.getElementById("leetcode").value.trim();
+				const codechef = document.getElementById("codechef").value.trim();
+				const gfg = document.getElementById("gfg").value.trim();
+				const hackerrank = document.getElementById("hackerrank").value.trim();
+				const codeforces = document.getElementById("codeforces").value.trim();
 
-				th {
-					background: var(--code-bg);
-				}
+				const url = 
+					"/stats?"
+					+ "leetcode=" + encodeURIComponent(leetcode)
+					+ "&codechef=" + encodeURIComponent(codechef)
+					+ "&gfg=" + encodeURIComponent(gfg)
+					+ "&hackerrank=" + encodeURIComponent(hackerrank)
+					+ "&codeforces=" + encodeURIComponent(codeforces);
 
-				hr {
-					border: none;
-					border-top: 1px solid rgba(128,128,128,0.3);
-					margin: 2em 0;
-				}
-			</style>
-		</head>
-		<body>
-		`))
-		w.Write(buf.Bytes())
-		w.Write([]byte("</body></html>"))
-	}
+				window.open(url, "_blank");
+			}
+		</script>
+	</head>
+
+	<body>
+
+		<!-- 🔵 GitHub Project Documentation -->
+		<div class="top-banner">
+			📘 View Project Documentation → 
+			<a href="https://github.com/mearjuntripathi/coding-profile-service" target="_blank">
+				GitHub Repository
+			</a>
+		</div>
+
+		<h1>Search Coding Profiles</h1>
+
+		<div class="input-group">
+			<label>LeetCode Username</label>
+			<input id="leetcode" placeholder="e.g. mearjuntripathi">
+		</div>
+
+		<div class="input-group">
+			<label>CodeChef Username</label>
+			<input id="codechef" placeholder="e.g. isthisarjun">
+		</div>
+
+		<div class="input-group">
+			<label>GeeksForGeeks Username</label>
+			<input id="gfg" placeholder="e.g. mearjuntripathi">
+		</div>
+
+		<div class="input-group">
+			<label>HackerRank Username</label>
+			<input id="hackerrank" placeholder="e.g. mearjuntripathi">
+		</div>
+
+		<div class="input-group">
+			<label>Codeforces Username</label>
+			<input id="codeforces" placeholder="e.g. arjun_cf">
+		</div>
+
+		<button onclick="searchStats()">Search</button>
+
+		<div class="note">A new tab will open showing all your stats.</div>
+
+	</body>
+	</html>
+	`))
+}
