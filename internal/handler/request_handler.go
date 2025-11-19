@@ -111,7 +111,6 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) {
 	</head>
 
 	<body>
-
 		<!-- 🔵 GitHub Project Documentation -->
 		<div class="top-banner">
 			📘 View Project Documentation → 
