@@ -1,12 +1,13 @@
 package scraper
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
+	"os"
+	"time"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/chromedp/chromedp"
 )
 
 // GFGProfile holds the scraped data temporarily
@@ -22,78 +23,159 @@ type GFGProfile struct {
 	CountryRank          int
 }
 
-// FetchGFGHTML scrapes the GFG user profile HTML
+// FetchGFGHTML scrapes the GFG user profile using headless Chrome
 func FetchGFGHTML(username string) (*GFGProfile, error) {
-	url := fmt.Sprintf("https://auth.geeksforgeeks.org/user/%s", username)
-	res, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
+	// Configure Chrome options
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.DisableGPU,
+		chromedp.NoSandbox,
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("disable-setuid-sandbox", true),
+		chromedp.Flag("disable-extensions", true),
+	)
 
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("status code error: %d", res.StatusCode)
+	// Use chromium from environment or default path
+	chromePath := os.Getenv("CHROME_PATH")
+	if chromePath == "" {
+		chromePath = "/usr/bin/chromium-browser"
+	}
+	
+	// Check if chromium exists, if so set the path
+	if _, err := os.Stat(chromePath); err == nil {
+		opts = append(opts, chromedp.ExecPath(chromePath))
 	}
 
-	doc, err := goquery.NewDocumentFromReader(res.Body)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("https://www.geeksforgeeks.org/profile/%s?tab=activity", username)
+	
+	var result string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.WaitVisible(`.ScoreContainer_score-card__zI4vG`, chromedp.ByQuery),
+		chromedp.Sleep(2*time.Second),
+		
+		// Extract all data in one JavaScript call
+		chromedp.Evaluate(`
+			JSON.stringify({
+				codingScore: (() => {
+					const cards = document.querySelectorAll('.ScoreContainer_score-card__zI4vG');
+					for (let card of cards) {
+						const label = card.querySelector('.ScoreContainer_label__aVpLE')?.textContent?.trim();
+						if (label === 'Coding Score') {
+							return card.querySelector('.ScoreContainer_value__7yy7h')?.textContent?.trim() || '0';
+						}
+					}
+					return '0';
+				})(),
+				problemsSolved: (() => {
+					const cards = document.querySelectorAll('.ScoreContainer_score-card__zI4vG');
+					for (let card of cards) {
+						const label = card.querySelector('.ScoreContainer_label__aVpLE')?.textContent?.trim();
+						if (label === 'Problems Solved') {
+							return card.querySelector('.ScoreContainer_value__7yy7h')?.textContent?.trim() || '0';
+						}
+					}
+					return '0';
+				})(),
+				instituteRank: (() => {
+					const cards = document.querySelectorAll('.ScoreContainer_score-card__zI4vG');
+					for (let card of cards) {
+						const label = card.querySelector('.ScoreContainer_label__aVpLE')?.textContent?.trim();
+						if (label === 'Institute Rank') {
+							const val = card.querySelector('.ScoreContainer_value__7yy7h')?.textContent?.trim();
+							return val === '__' ? '0' : (val || '0');
+						}
+					}
+					return '0';
+				})(),
+				streak: (() => {
+					const el = document.querySelector('.PotdContainer_streakText__oNgWh');
+					if (el) {
+						const match = el.textContent.trim().match(/^(\d+)/);
+						return match ? match[1] : '0';
+					}
+					return '0';
+				})(),
+				school: (() => {
+					const items = document.querySelectorAll('.ProblemNavbar_head_nav--text__7u4wN');
+					for (let item of items) {
+						const match = item.textContent.trim().match(/SCHOOL\s*\((\d+)\)/i);
+						if (match) return match[1];
+					}
+					return '0';
+				})(),
+				basic: (() => {
+					const items = document.querySelectorAll('.ProblemNavbar_head_nav--text__7u4wN');
+					for (let item of items) {
+						const match = item.textContent.trim().match(/BASIC\s*\((\d+)\)/i);
+						if (match) return match[1];
+					}
+					return '0';
+				})(),
+				easy: (() => {
+					const items = document.querySelectorAll('.ProblemNavbar_head_nav--text__7u4wN');
+					for (let item of items) {
+						const match = item.textContent.trim().match(/EASY\s*\((\d+)\)/i);
+						if (match) return match[1];
+					}
+					return '0';
+				})(),
+				medium: (() => {
+					const items = document.querySelectorAll('.ProblemNavbar_head_nav--text__7u4wN');
+					for (let item of items) {
+						const match = item.textContent.trim().match(/MEDIUM\s*\((\d+)\)/i);
+						if (match) return match[1];
+					}
+					return '0';
+				})(),
+				hard: (() => {
+					const items = document.querySelectorAll('.ProblemNavbar_head_nav--text__7u4wN');
+					for (let item of items) {
+						const match = item.textContent.trim().match(/HARD\s*\((\d+)\)/i);
+						if (match) return match[1];
+					}
+					return '0';
+				})()
+			})
+		`, &result),
+	)
+
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("chromedp error: %v", err)
+	}
+
+	// Parse JSON result
+	var data map[string]string
+	if err := json.Unmarshal([]byte(result), &data); err != nil {
+		return nil, fmt.Errorf("failed to parse result: %v", err)
 	}
 
 	profile := &GFGProfile{}
+	
+	// Helper to convert string to int
+	toInt := func(s string) int {
+		var val int
+		fmt.Sscanf(s, "%d", &val)
+		return val
+	}
 
-	// Total Problems Solved
-	doc.Find(".scoreCard_head_left--text__KZ2S1").Each(func(i int, s *goquery.Selection) {
-		text := s.Text()
-		value := s.Next().Text()
-		switch text {
-		case "Problem Solved":
-			profile.TotalSolved, _ = strconv.Atoi(strings.TrimSpace(value))
-		case "Coding Score":
-			profile.MaxRating, _ = strconv.Atoi(strings.TrimSpace(value))
-		case "Article Published":
-			// optional, ignore
-		}
-	})
-
-	// Streak
-	doc.Find(".circularProgressBar_head_mid_streakCnt__MFOF1").Each(func(i int, s *goquery.Selection) {
-		streakText := strings.Split(s.Text(), "/")[0]
-		profile.Streak, _ = strconv.Atoi(strings.TrimSpace(streakText))
-	})
-
-	// Problem difficulty breakdown
-	doc.Find(".problemNavbar_head_nav__a4K6P").Each(func(i int, s *goquery.Selection) {
-		text := s.Find(".problemNavbar_head_nav--text__UaGCx").Text()
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return
-		}
-		parts := strings.Split(text, "(")
-		if len(parts) != 2 {
-			return
-		}
-		count, _ := strconv.Atoi(strings.TrimSuffix(parts[1], ")"))
-		category := strings.ToUpper(strings.TrimSpace(parts[0]))
-		switch category {
-		case "SCHOOL", "BASIC", "EASY":
-			profile.EasySolved += count
-		case "MEDIUM":
-			profile.MediumSolved = count
-		case "HARD":
-			profile.HardSolved = count
-		}
-	})
-
-	// Contests Participated
-	doc.Find(".scoreCards_head__G_uNQ .scoreCard_head_left--text__KZ2S1").Each(func(i int, s *goquery.Selection) {
-		if s.Text() == "Contest Rating" {
-			// optional: you can parse rating if needed
-		}
-	})
-	doc.Find(".scoreCards_head__G_uNQ .scoreCard_head_left--score__oSi_x").Each(func(i int, s *goquery.Selection) {
-		// Hack: total contests count appears in "Problem Solved" card? Otherwise may need another selector
-	})
+	profile.MaxRating = toInt(data["codingScore"])
+	profile.TotalSolved = toInt(data["problemsSolved"])
+	profile.GlobalRank = toInt(data["instituteRank"])
+	profile.Streak = toInt(data["streak"])
+	
+	// Combine School + Basic + Easy
+	profile.EasySolved = toInt(data["school"]) + toInt(data["basic"]) + toInt(data["easy"])
+	profile.MediumSolved = toInt(data["medium"])
+	profile.HardSolved = toInt(data["hard"])
 
 	return profile, nil
 }
