@@ -1,26 +1,14 @@
-# Stage 1: Build
-FROM golang:1.24 AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
-
 COPY go.mod go.sum ./
-RUN go mod download
-
+RUN go mod tidy
 COPY . .
+RUN go build -o server ./cmd/server/main.go
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o coding-profile-service ./cmd/server
-
-# Stage 2: Run - use minimal alpine image, no Chromium needed
 FROM alpine:latest
-
-# Just need CA certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
-
-WORKDIR /root/
-
-COPY --from=builder /app/coding-profile-service .
-COPY README.md /root/README.md
+WORKDIR /app
+COPY --from=builder /app/server .
 
 EXPOSE 8080
-
-CMD ["./coding-profile-service"]
+CMD ["./server"]

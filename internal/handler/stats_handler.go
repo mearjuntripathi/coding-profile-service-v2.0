@@ -1,20 +1,30 @@
+// internal/handler/stats_handler.go
 package handler
 
 import (
-	"encoding/json"
-	"net/http"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "strings"
+    "sync"
+    "time"
 
-	"coding-profile-service/internal/scraper"
-	"coding-profile-service/pkg/model"
+    "coding-profile-service/internal/cache"
+    "coding-profile-service/internal/scraper"
+    "coding-profile-service/pkg/model"
 )
 
-func StatsHandler(w http.ResponseWriter, r *http.Request) {
-	// Read query params
-	platform := strings.ToLower(r.URL.Query().Get("platform"))
-	username := strings.TrimSpace(r.URL.Query().Get("username"))
 
-	// Map of platform -> username for multi-platform mode
+// TTLs per platform — stats don't change that often
+var platformTTL = map[string]time.Duration{
+	"leetcode":   30 * time.Minute,
+	"gfg":        30 * time.Minute,
+	"codechef":   2 * time.Hour,
+	"hackerrank": 6 * time.Hour,
+	"codeforces": 1 * time.Hour,
+}
+
+func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	params := map[string]string{
 		"leetcode":   r.URL.Query().Get("leetcode"),
 		"gfg":        r.URL.Query().Get("gfg"),
@@ -23,32 +33,75 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 		"codeforces": r.URL.Query().Get("codeforces"),
 	}
 
-	var results []model.StatsResponse
+	// Single platform mode fallback
+	platform := strings.ToLower(r.URL.Query().Get("platform"))
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
+	if platform != "" && username != "" {
+		params[platform] = username
+	}
 
-	// --- Multi-platform Mode ---
-	for key, val := range params {
-		if val != "" {
-			resp, err := fetchPlatformStats(key, val)
-			if err != nil {
-				resp.Error = err.Error()
-			}
+	// Collect only requested platforms
+	type job struct {
+		platform string
+		username string
+	}
+	var jobs []job
+	for k, v := range params {
+		if v != "" {
+			jobs = append(jobs, job{k, v})
+		}
+	}
+
+	// ✅ Run all platform fetches in parallel
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results []model.StatsResponse
+	)
+
+	for _, j := range jobs {
+		wg.Add(1)
+		go func(p, u string) {
+			defer wg.Done()
+			resp := fetchWithCache(p, u)
+			mu.Lock()
 			results = append(results, resp)
-		}
+			mu.Unlock()
+		}(j.platform, j.username)
 	}
 
-	// --- Single-platform Mode ---
-	if len(results) == 0 && platform != "" && username != "" {
-		resp, err := fetchPlatformStats(platform, username)
-		if err != nil {
-			resp.Error = err.Error()
-		}
-		results = append(results, resp)
-	}
+	wg.Wait()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"profiles": results,
 	})
+}
+
+func fetchWithCache(platform, username string) model.StatsResponse {
+	cacheKey := fmt.Sprintf("%s:%s", platform, username) // e.g. "leetcode:mearjuntripathi"
+
+	// 1. Check Redis first
+	if cached, ok := cache.GetCache(cacheKey); ok {
+		cached.Cached = true // optional flag so you know it came from cache
+		return cached
+	}
+
+	// 2. Cache miss — hit the scraper
+	resp, err := fetchPlatformStats(platform, username)
+	if err != nil {
+		resp.Error = err.Error()
+		return resp // don't cache errors
+	}
+
+	// 3. Store in Redis with platform-specific TTL
+	ttl := platformTTL[platform]
+	if ttl == 0 {
+		ttl = 30 * time.Minute // default
+	}
+	cache.SetCache(cacheKey, resp, ttl)
+
+	return resp
 }
 
 func fetchPlatformStats(platform, username string) (model.StatsResponse, error) {
@@ -63,7 +116,7 @@ func fetchPlatformStats(platform, username string) (model.StatsResponse, error) 
 		return scraper.FetchHackerRank(username)
 	case "codeforces":
 		return scraper.FetchCodeforces(username)
-default:
+	default:
 		return model.StatsResponse{Platform: platform, Username: username, Error: "unsupported platform"}, nil
 	}
 }

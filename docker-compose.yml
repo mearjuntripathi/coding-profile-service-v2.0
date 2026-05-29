@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: coding-profile-app
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_ADDR=redis:6379        # 'redis' = service name below, NOT localhost
+      - REDIS_PASSWORD=
+      - SERVER_PORT=8080
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: coding-profile-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

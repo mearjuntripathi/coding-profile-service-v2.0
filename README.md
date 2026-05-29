@@ -1,37 +1,50 @@
 # Coding Profile Service
 
-**Coding Profile Service** is a Go-based backend API for fetching and aggregating coding profiles across multiple competitive programming platforms like **HackerRank, CodeChef, LeetCode, and GeeksforGeeks**.
+**Coding Profile Service** is a high-performance Go-based backend API for fetching and aggregating coding profiles across multiple competitive programming platforms — **LeetCode, HackerRank, CodeChef, GeeksforGeeks, and Codeforces**.
 
-The service uses **HTML scraping** and APIs where available to fetch public statistics, badges, certifications, and other coding achievements. It is designed with **GraphQL** for fast and flexible queries, making it faster than typical JavaScript or Python implementations.
+The service uses **HTML scraping** and platform APIs to fetch public statistics, badges, certifications, and coding achievements. It features **Redis caching**, **parallel scraping via goroutines**, and is fully **Dockerized** for easy local development and deployment.
+
+> 🚀 **Live API:** [https://coding-profile-service.onrender.com](https://coding-profile-service.onrender.com)
+
+---
+
+## What's New
+
+- ✔ **Redis Caching** — repeat requests served in ~2ms instead of ~135ms
+- ✔ **Parallel Scraping** — all platforms fetched concurrently via goroutines
+- ✔ **Docker Compose** — run Go app + Redis together in one command
+- ✔ **Codeforces** support added
+- ✔ **Upstash Redis** support for production (Render)
+- ✔ **Per-platform TTLs** — smart cache expiry based on how often stats change
 
 ---
 
 ## Features
 
-* Fetch coding profile stats for multiple platforms:
-
-  * **HackerRank:** Coding Score, Problems Solved, Badges, Certifications.
-  * **CodeChef:** Rating, Max Rating, Contests Participated, Problems Solved, Rankings.
-  * **LeetCode:** Problems Solved, Acceptance Rate, Contest Ratings (future-ready).
-  * **GeeksforGeeks:** Problems Solved, Certificates, Badges (future-ready).
-* Fully modular scraping architecture:
-
-  * Each platform has its own scraper.
-  * Easy to extend for additional platforms.
-* GraphQL API for flexible and fast queries.
-* Minimal dependencies, written entirely in **Go** for performance.
+- Fetch coding profile stats for 5 platforms simultaneously:
+  - **LeetCode** — Problems Solved (Easy/Medium/Hard)
+  - **HackerRank** — Coding Score, Badges, Certifications
+  - **CodeChef** — Rating, Max Rating, Global/Country Rank, Contests
+  - **GeeksforGeeks** — Problems Solved, Streak, Difficulty breakdown
+  - **Codeforces** — Rating, Max Rating, Contests, Problems by type
+- **Redis caching** with per-platform TTLs to reduce scraping load
+- **Parallel requests** — all platforms fetched at the same time
+- Fully modular scraper architecture — easy to add new platforms
+- REST API with multi-platform query support
+- Graceful fallback — app works even if Redis is unavailable
 
 ---
 
 ## Tech Stack
 
-| Component   | Technology                                                        |
-| ----------- | ----------------------------------------------------------------- |
-| Backend     | Go (Golang)                                                       |
-| GraphQL API | [gqlgen](https://gqlgen.com/) or custom GraphQL Go implementation |
-| Scraping    | `goquery`, `net/http`                                             |
-| Data Models | Go structs (`model/StatsResponse`)                                |
-| Caching     | Optional internal caching module                                  |
+| Component | Technology |
+|---|---|
+| Backend | Go (Golang) 1.24+ |
+| Scraping | `goquery`, `net/http` |
+| Caching | Redis (Docker locally, Upstash in production) |
+| Containerization | Docker + Docker Compose |
+| Deployment | Render |
+| Data Models | Go structs (`pkg/model/StatsResponse`) |
 
 ---
 
@@ -41,7 +54,7 @@ The service uses **HTML scraping** and APIs where available to fetch public stat
 coding-profile-service/
 ├── cmd/
 │   └── server/
-│       └── main.go           # Entry point of the server
+│       └── main.go                  # Entry point — inits Redis, starts server
 ├── internal/
 │   ├── scraper/
 │   │   ├── hackerrank.go
@@ -49,317 +62,264 @@ coding-profile-service/
 │   │   ├── codechef.go
 │   │   ├── codechefHTMLScraper.go
 │   │   ├── leetcode.go
-│   │   └── gfg.go
+│   │   ├── gfg.go
+│   │   └── codeforces.go
 │   ├── cache/
-│   │   └── cache.go          # Optional caching logic
+│   │   └── cache.go                 # Redis client — Get/Set with TTL
 │   └── handler/
-│       └── stats_handler.go  # GraphQL resolvers / API handlers
+│       ├── stats_handler.go         # API handler — parallel fetch + cache logic
+│       └── request_handler.go       # HTML landing page
 ├── pkg/
 │   └── model/
-│       └── stats_response.go # Data model for profiles
+│       └── stats_response.go        # Shared data model
 ├── go.mod
 ├── go.sum
-├── dockerfile                # Dockerfile for containerizing the app
-├── .dockerignore             # Excludes unnecessary files from Docker image
+├── dockerfile                       # Multi-stage Go build
+├── docker-compose.yml               # App + Redis together
+├── .env                             # Local env vars (not committed)
+├── .dockerignore
 └── README.md
-
 ```
 
 ---
 
 ## How It Works
 
-1. **Scraper Layer** (`internal/scraper/`)
+```
+Incoming Request
+      ↓
+  StatsHandler
+      ↓
+  ┌─────────────────────────────────┐
+  │  For each platform (goroutine)  │
+  │                                 │
+  │  1. Check Redis cache           │
+  │     ↓ HIT → return (~2ms)      │
+  │     ↓ MISS                      │
+  │  2. Scrape live platform        │
+  │     ↓ (~40-135ms)              │
+  │  3. Store in Redis with TTL     │
+  └─────────────────────────────────┘
+      ↓
+  Aggregate all results
+      ↓
+  JSON Response
+```
 
-   * Each platform has a dedicated scraper module.
-   * Scraper can fetch:
+### Cache TTLs per platform
 
-     * Public profile info
-     * Ratings, problems solved, contests
-     * Badges and certifications
-   * Scrapers are lightweight, using **Go `net/http` and `goquery`** for HTML parsing.
-
-2. **Handler Layer** (`internal/handler/`)
-
-   * GraphQL resolvers process requests.
-   * Queries can specify platform, username, and required fields.
-
-3. **Cache Layer** (`internal/cache/`)
-
-   * Optional: cache results locally to reduce repeated scraping.
-   * Can be extended to Redis or other stores.
-
-4. **GraphQL API**
-
-   * Flexible queries: clients request only fields they need.
-   * Fast and efficient, fully typed using Go structs.
+| Platform | TTL | Reason |
+|---|---|---|
+| LeetCode | 30 min | Problem counts change occasionally |
+| GeeksforGeeks | 30 min | Streak updates daily |
+| Codeforces | 1 hour | Contest ratings update after contests |
+| CodeChef | 2 hours | Rating changes after contests |
+| HackerRank | 6 hours | Badges/certs rarely change |
 
 ---
 
-## Example Usage
+## API Reference
 
-### GraphQL Query
+### Endpoint
 
-```graphql
-query {
-  hackerRank(username: "johnDoe") {
-    codingScore
-    totalSolved
-    badges
-    certifications
-    certificationLinks
-  }
+```
+GET /stats
+```
+
+### Query Parameters
+
+| Parameter | Description | Example |
+|---|---|---|
+| `leetcode` | LeetCode username | `mearjuntripathi` |
+| `codechef` | CodeChef username | `isthisarjun` |
+| `gfg` | GeeksforGeeks username | `mearjuntripathi` |
+| `hackerrank` | HackerRank username | `mearjuntripathi` |
+| `codeforces` | Codeforces username | `isthisarjun` |
+
+All parameters are optional — pass only the platforms you need.
+
+### Example Request
+
+```
+GET https://coding-profile-service.onrender.com/stats?leetcode=mearjuntripathi&codechef=isthisarjun&gfg=mearjuntripathi&hackerrank=mearjuntripathi&codeforces=isthisarjun
+```
+
+### Example Response
+
+```json
+{
+  "profiles": [
+    {
+      "platform": "leetcode",
+      "username": "mearjuntripathi",
+      "totalSolved": 710,
+      "easySolved": 253,
+      "mediumSolved": 427,
+      "hardSolved": 30,
+      "cached": true
+    },
+    {
+      "platform": "gfg",
+      "username": "mearjuntripathi",
+      "totalSolved": 534,
+      "streak": 50,
+      "easySolved": 224,
+      "mediumSolved": 277,
+      "hardSolved": 33,
+      "maxRating": 1705
+    },
+    {
+      "platform": "codechef",
+      "username": "isthisarjun",
+      "totalSolved": 488,
+      "rating": 1593,
+      "contestsParticipated": 32,
+      "maxRating": 1624,
+      "globalRank": 18506,
+      "countryRank": 16669
+    },
+    {
+      "platform": "hackerrank",
+      "username": "mearjuntripathi",
+      "totalSolved": 756,
+      "badges": ["Problem Solving", "CPP", "Java", "Python", "SQL", "C language"],
+      "certifications": 4,
+      "certificationLinks": [
+        "https://www.hackerrank.com/certificates/dd88f94012d9",
+        "https://www.hackerrank.com/certificates/ad7f9b3ad2e1"
+      ]
+    },
+    {
+      "platform": "codeforces",
+      "username": "isthisarjun",
+      "totalSolved": 7,
+      "rating": 860,
+      "contestsParticipated": 3,
+      "maxRating": 860,
+      "questionsByType": { "easy": 7 }
+    }
+  ]
 }
 ```
 
-### Go Client Example
-
-```go
-stats, err := scraper.FetchHackerRankHTML("johnDoe")
-if err != nil {
-    log.Fatal(err)
-}
-fmt.Printf("%+v\n", stats)
-```
+> `"cached": true` means the response was served from Redis, not scraped live.
 
 ---
 
 ## Getting Started
 
-1. **Clone the repository**
+### Option 1 — Run with Docker Compose (Recommended)
+
+Runs Go app + Redis together. No local Go or Redis install needed.
 
 ```bash
-git clone https://github.com/yourusername/coding-profile-service.git
+# Clone the repo
+git clone https://github.com/mearjuntripathi/coding-profile-service.git
 cd coding-profile-service
+
+# Start everything
+sudo docker compose up --build
 ```
 
-2. **Install dependencies**
+App runs at `http://localhost:8080`
 
 ```bash
-go mod tidy
+# Stop everything
+sudo docker compose down
 ```
-
-3. **Run the server**
-
-```bash
-go run cmd/server/main.go
-```
-
-4. **Query GraphQL**
-
-* Access the GraphQL playground (if configured) at `http://localhost:8080/graphql`
-* Execute queries to fetch profile stats.
 
 ---
 
-## Future Plans
+### Option 2 — Run Locally (Go + Docker Redis)
 
-* Add more coding platforms (Codeforces, AtCoder, etc.).
-* Implement **Redis caching** for faster repeated requests.
-* Add **unit tests** for scrapers.
-* Improve badge extraction to include **SVG images** and more metadata.
+```bash
+# Step 1 — Start Redis in Docker
+sudo docker run -d --name redis-local -p 6379:6379 redis:7-alpine
+
+# Step 2 — Create .env file
+echo "REDIS_ADDR=localhost:6379" > .env
+echo "REDIS_PASSWORD=" >> .env
+
+# Step 3 — Install dependencies
+go mod tidy
+
+# Step 4 — Run the server
+go run cmd/server/main.go
+```
+
+App runs at `http://localhost:8080`
+
+---
+
+## Environment Variables
+
+| Variable | Description | Local | Production |
+|---|---|---|---|
+| `REDIS_ADDR` | Redis address | `localhost:6379` | Upstash endpoint |
+| `REDIS_PASSWORD` | Redis password | _(empty)_ | Upstash token |
+| `SERVER_PORT` | Server port | `8080` | `8080` |
+
+Create a `.env` file for local development (never commit this):
+
+```bash
+REDIS_ADDR=localhost:6379
+REDIS_PASSWORD=
+SERVER_PORT=8080
+```
+
+---
+
+## Deployment (Render + Upstash)
+
+### 1. Create free Redis on Upstash
+
+1. Go to [upstash.com](https://upstash.com) → Create free database
+2. Copy **Endpoint** and **Password**
+
+### 2. Set environment variables on Render
+
+In your Render dashboard → Environment tab:
+
+| Key | Value |
+|---|---|
+| `REDIS_ADDR` | `your-db.upstash.io:6379` |
+| `REDIS_PASSWORD` | `your-upstash-token` |
+
+Render redeploys automatically. No code changes needed between local and production.
+
+---
+
+## Performance
+
+| Scenario | Response Time |
+|---|---|
+| Cold request (cache miss, 1 platform) | ~135ms |
+| Cold request (cache miss, 5 platforms parallel) | ~135ms |
+| Warm request (cache hit) | ~2ms |
 
 ---
 
 ## Contributing
 
-1. Fork the repository.
-2. Create a new branch: `git checkout -b feature/new-scraper`.
-3. Add your scraper or feature.
-4. Commit changes: `git commit -am 'Add new scraper'`.
-5. Push to branch: `git push origin feature/new-scraper`.
-6. Create a Pull Request.
-
-```graphql
-# ============================
-# GraphQL Schema for Coding Profile Service
-# ============================
-
-# Root Queryt
-type Query {
-  # Fetch HackerRank profile
-  hackerRank(username: String!): HackerRankProfile
-
-  # Fetch CodeChef profile
-  codeChef(username: String!): CodeChefProfile
-
-  # Fetch LeetCode profile
-  leetCode(username: String!): LeetCodeProfile
-
-  # Fetch GeeksforGeeks profile
-  gfg(username: String!): GFGProfile
-}
-
-# ----------------------------
-# HackerRank Profile
-# ----------------------------
-type HackerRankProfile {
-  username: String!
-  platform: String!
-  codingScore: Int
-  totalSolved: Int
-  badges: [String]           # List of badge titles
-  certifications: Int        # Number of certificates
-  certificationLinks: [String] # Direct URLs to certificates
-}
-
-# ----------------------------
-# CodeChef Profile
-# ----------------------------
-type CodeChefProfile {
-  username: String!
-  platform: String!
-  rating: Int
-  maxRating: Int
-  globalRank: Int
-  countryRank: Int
-  contestsParticipated: Int
-  totalSolved: Int
-}
-
-# ----------------------------
-# LeetCode Profile
-# ----------------------------
-type LeetCodeProfile {
-  username: String!
-  platform: String!
-  totalSolved: Int
-  easySolved: Int
-  mediumSolved: Int
-  hardSolved: Int
-  acceptanceRate: Float
-  contestRating: Int
-  badges: [String]
-}
-
-# ----------------------------
-# GeeksforGeeks Profile
-# ----------------------------
-type GFGProfile {
-  username: String!
-  platform: String!
-  totalSolved: Int
-  certifications: Int
-  badges: [String]
-}
-
-# ----------------------------
-# Example Usage
-# ----------------------------
-# query {
-#   hackerRank(username: "johnDoe") {
-#     codingScore
-#     totalSolved
-#     badges
-#     certifications
-#     certificationLinks
-#   }
-# }
-```
-
-
-### 🔹 **API Endpoint**
-
-```
-GET https://coding-profile-service.onrender.com/stats
-```
-
-| Query Parameter | Description            | Example           |
-| --------------- | ---------------------- | ----------------- |
-| `leetcode`      | LeetCode username      | `mearjuntripathi` |
-| `codechef`      | CodeChef username      | `isthisarjun`     |
-| `gfg`           | GeeksforGeeks username | `mearjuntripathi` |
-| `hackerrank`    | HackerRank username    | `mearjuntripathi` |
-
-✅ **Example Request:**
-
-```
-https://coding-profile-service.onrender.com/stats?leetcode=mearjuntripathi&codechef=isthisarjun&gfg=mearjuntripathi&hackerrank=mearjuntripathi
-```
-
-✅ **Example Response:**
-
-```json
-{
-    "profiles": [
-        {
-            "platform": "gfg",
-            "username": "mearjuntripathi",
-            "totalSolved": 534,
-            "streak": 50,
-            "easySolved": 224,
-            "mediumSolved": 277,
-            "hardSolved": 33,
-            "maxRating": 1705
-        },
-        {
-            "platform": "codechef",
-            "username": "isthisarjun",
-            "totalSolved": 488,
-            "rating": 1593,
-            "contestsParticipated": 32,
-            "maxRating": 1624,
-            "globalRank": 18506,
-            "countryRank": 16669
-        },
-        {
-            "platform": "hackerrank",
-            "username": "mearjuntripathi",
-            "totalSolved": 756,
-            "badges": [
-                "Problem Solving",
-                "CPP",
-                "Java",
-                "Python",
-                "Days of Code",
-                "Sql",
-                "C language"
-            ],
-            "certifications": 4,
-            "certificationLinks": [
-                "https://www.hackerrank.com/certificates/dd88f94012d9",
-                "https://www.hackerrank.com/certificates/ad7f9b3ad2e1",
-                "https://www.hackerrank.com/certificates/b78dde45a6f8",
-                "https://www.hackerrank.com/certificates/7fdef080e935"
-            ]
-        },
-        {
-            "platform": "codeforces",
-            "username": "isthisarjun",
-            "totalSolved": 7,
-            "rating": 860,
-            "contestsParticipated": 3,
-            "maxRating": 860,
-            "questionsByType": {
-                "easy": 7
-            }
-        },
-        {
-            "platform": "leetcode",
-            "username": "mearjuntripathi",
-            "totalSolved": 710,
-            "easySolved": 253,
-            "mediumSolved": 427,
-            "hardSolved": 30
-        }
-    ]
-}
-```
+1. Fork the repository
+2. Create a new branch: `git checkout -b feature/new-scraper`
+3. Add your scraper in `internal/scraper/`
+4. Register it in `stats_handler.go` → `fetchPlatformStats()`
+5. Commit: `git commit -am 'Add new scraper'`
+6. Push and open a Pull Request
 
 ---
 
-### Notes:
+## Future Plans
 
-1. Each platform has its **own type** because fields differ slightly.
-2. All profiles include `username` and `platform` for clarity.
-3. Arrays like `badges` and `certificationLinks` can be extended later.
-4. GraphQL allows **partial queries**, so clients only fetch the fields they need.
-5. Future platforms like Codeforces or AtCoder can be added by defining a new type and adding a root query.
+- Add **AtCoder** and **SPOJ** platforms
+- **Redis persistence** with volume mounts in Docker
+- **Unit tests** for all scrapers
+- **Rate limiting** to protect against abuse
+- **Webhook support** — notify when rating changes
 
 ---
 
 ## License
 
-This project is open-source under **MIT License**.
-
----
+This project is open-source under the **MIT License**.
