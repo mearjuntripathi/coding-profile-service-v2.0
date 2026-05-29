@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"crypto/tls"
 	"time"
-	"fmt"
+	// "fmt"
 
 	"coding-profile-service/pkg/model"
 	"github.com/redis/go-redis/v9"
@@ -19,28 +20,32 @@ var (
 )
 
 func Init() {
-	addr := os.Getenv("REDIS_ADDR")
-	if addr == "" {
-		addr = "localhost:6379" // your docker redis
-	}
+    addr := os.Getenv("REDIS_ADDR")
+    if addr == "" {
+        addr = "localhost:6379"
+    }
 
-	fmt.Println(addr)
+    password := os.Getenv("REDIS_PASSWORD")
 
-	password := os.Getenv("REDIS_PASSWORD") // empty for local docker
+    // check if its local or upstash
+    var tlsConfig *tls.Config
+    if addr != "localhost:6379" {
+        tlsConfig = &tls.Config{} // ← Upstash needs TLS
+    }
 
-	client = redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       0,
-	})
+    client = redis.NewClient(&redis.Options{
+        Addr:      addr,
+        Password:  password,
+        DB:        0,
+        TLSConfig: tlsConfig, // ← add this
+    })
 
-	// Test connection
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("⚠️  Redis not connected: %v — requests will hit scrapers directly", err)
-		client = nil // app still works without redis
-	} else {
-		log.Println("✅ Redis connected at", addr)
-	}
+    if err := client.Ping(ctx).Err(); err != nil {
+        log.Printf("⚠️  Redis not connected: %v — requests will hit scrapers directly", err)
+        client = nil
+    } else {
+        log.Println("✅ Redis connected at", addr)
+    }
 }
 
 func SetCache(key string, resp model.StatsResponse, ttl time.Duration) {
