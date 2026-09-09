@@ -4,18 +4,18 @@
 
 The service uses **HTML scraping** and platform APIs to fetch public statistics, badges, certifications, and coding achievements. It features **Redis caching**, **parallel scraping via goroutines**, and is fully **Dockerized** for easy local development and deployment.
 
-> 🚀 **Live API:** [https://coding-profile-service.onrender.com](https://coding-profile-service.onrender.com)
+> 🚀 **Live API:** [https://coding-profile-service-v2-0.onrender.com/](https://coding-profile-service-v2-0.onrender.com/)
 
 ---
 
 ## What's New
 
-- ✔ **Redis Caching** — repeat requests served in ~2ms instead of ~135ms
-- ✔ **Parallel Scraping** — all platforms fetched concurrently via goroutines
-- ✔ **Docker Compose** — run Go app + Redis together in one command
-- ✔ **Codeforces** support added
-- ✔ **Upstash Redis** support for production (Render)
-- ✔ **Per-platform TTLs** — smart cache expiry based on how often stats change
+- ✅ **Redis Caching** — repeat requests served in ~2ms instead of ~135ms
+- ✅ **Parallel Scraping** — all platforms fetched concurrently via goroutines
+- ✅ **Docker Compose** — run Go app + Redis together in one command
+- ✅ **Codeforces** support added
+- ✅ **Upstash Redis** support for production (Render)
+- ✅ **Per-platform TTLs** — smart cache expiry based on how often stats change
 
 ---
 
