@@ -59,9 +59,13 @@ func FetchCodeChefHTML(username string) (model.StatsResponse, error) {
     }
 
     // Contests Participated
-    doc.Find(".contest-participated-count b").Each(func(i int, s *goquery.Selection) {
-        stats.ContestsParticipated, _ = strconv.Atoi(strings.TrimSpace(s.Text()))
+    doc.Find(".contest-participated-count b").EachWithBreak(func(i int, s *goquery.Selection) bool {
+        text := strings.TrimSpace(s.Text())
+        fmt.Printf("Contest element %d: %q\n", i, text)
+        stats.ContestsParticipated, _ = strconv.Atoi(text)
+        return false // stop iteration
     })
+
 
     // Total Problems Solved
     doc.Find(".rating-data-section.problems-solved h3").Each(func(i int, s *goquery.Selection) {
